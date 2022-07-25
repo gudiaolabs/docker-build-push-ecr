@@ -1,0 +1,62 @@
+name: Reusable workflow Docker build and push to ECR
+
+on:
+  workflow_call:
+    inputs:
+      ecr_repository:
+        required: true
+        type: string
+      image_tag: 
+        type: string
+    secrets:
+      aws_access_key_id:
+        required: true
+      aws_secret_access_key:
+        required: true
+
+jobs:
+  docker_build_push_ecr:
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.aws_access_key_id }}
+        aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
+        aws-region: us-east-1
+
+    - name: Log in to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1        
+
+    - name: Set the tag
+      run: |
+        if [ -z "${{ inputs.image_tag }}" ]
+        then
+          echo "final_tag=${{ github.sha }} " >> $GITHUB_ENV
+        else
+          echo "final_tag=${{ inputs.image_tag }}" >> $GITHUB_ENV
+        fi      
+
+    - name: Build and push the Docker image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: '${{ inputs.ecr_repository }}'
+        IMAGE_TAG: '${{ env.final_tag }}'
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+    - name: Log out of Amazon ECR
+      if: always()
+      run: docker logout ${{ steps.login-ecr.outputs.registry }}   
+
+
+
+
+
